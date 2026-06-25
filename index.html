@@ -439,7 +439,7 @@
 
 <div id="tooltip"></div>
 
-<!-- GitHub config modal (first-time admin setup) -->
+<!-- Password modal -->
 <div id="gh-modal">
   <div class="modal-box">
     <h3>GitHub setup</h3>
@@ -490,75 +490,51 @@
 
 <script>
 // ── Config ─────────────────────────────────────────
-const ADMIN_PASSWORD = 'admin123';
-const GH_FILE_PATH   = 'seating.json';
+const WORKER_URL = 'https://little-boat-ce7e.heidi-7d7.workers.dev';
 
 // ── State ──────────────────────────────────────────
 let isAdmin    = false;
 let activeDesk = null;
-let ghConfig   = null; // { user, repo, token }
-let fileSha    = null; // needed for GitHub PUT
+let fileSha    = null;
 const names    = {};
 
-// ── GitHub helpers ─────────────────────────────────
-function ghApiUrl() {
-  return `https://api.github.com/repos/${ghConfig.user}/${ghConfig.repo}/contents/${GH_FILE_PATH}`;
-}
-
-function ghHeaders() {
-  return {
-    'Authorization': `token ${ghConfig.token}`,
-    'Accept': 'application/vnd.github+json',
-    'Content-Type': 'application/json'
-  };
-}
-
+// ── Load from worker ───────────────────────────────
 async function loadFromGitHub() {
-  if (!ghConfig) return;
   setStatus('Loading…', 'saving');
   try {
-    const res  = await fetch(ghApiUrl(), { headers: ghHeaders() });
+    const res  = await fetch(WORKER_URL);
     if (!res.ok) throw new Error(res.status);
-    const data = await res.json();
-    fileSha    = data.sha;
-    const json = JSON.parse(atob(data.content.replace(/\n/g, '')));
-    Object.entries(json).forEach(([id, name]) => {
+    const json = await res.json();
+    fileSha    = json.sha;
+    Object.entries(json.data).forEach(([id, name]) => {
       if (name) applyName(id, name);
     });
-    setStatus('Loaded from GitHub', 'saved');
-    setTimeout(() => setStatus(''), 2500);
+    setStatus('', '');
   } catch(e) {
     setStatus('Load failed — check config', 'error');
   }
 }
 
+// ── Save to worker ─────────────────────────────────
 async function saveToGitHub() {
-  if (!ghConfig) { saveToStorage(); return; }
   setStatus('Saving…', 'saving');
   try {
-    // Build full payload (all desks, even empty ones)
     const payload = {};
     document.querySelectorAll('.desk').forEach(d => {
       payload[d.id] = names[d.id] || '';
     });
-    const body = {
-      message: 'Update seating',
-      content: btoa(JSON.stringify(payload, null, 2)),
-    };
-    if (fileSha) body.sha = fileSha;
-    const res  = await fetch(ghApiUrl(), {
+    const res = await fetch(WORKER_URL, {
       method: 'PUT',
-      headers: ghHeaders(),
-      body: JSON.stringify(body)
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sha: fileSha, data: payload })
     });
     if (!res.ok) throw new Error(res.status);
-    const data = await res.json();
-    fileSha    = data.content.sha;
+    const result = await res.json();
+    fileSha = result.sha;
     setStatus('Saved ✓', 'saved');
-    setTimeout(() => setStatus(''), 2000);
+    setTimeout(() => setStatus('', ''), 2000);
   } catch(e) {
     setStatus('Save failed', 'error');
-    saveToStorage(); // fallback
   }
 }
 
@@ -646,11 +622,10 @@ function checkPw() {
   document.getElementById('admin-btn').textContent = 'Editing';
   document.body.classList.add('edit-mode');
 
-  // GitHub config is pre-configured
-  loadFromGitHub();
+
 }
 
-// ── GitHub config modal ───────────────────────────
+// ── Desk click ─────────────────────────────────────
 function closeGhModal() {
   document.getElementById('gh-modal').classList.remove('open');
   document.getElementById('gh-error').style.display = 'none';
@@ -708,7 +683,7 @@ function clearDesk() {
   saveToGitHub();
 }
 
-// ── Local storage fallback ─────────────────────────
+// ── Backdrop close ────────────────────────────────
 function saveToStorage() {
   try { localStorage.setItem('officeSeating', JSON.stringify(names)); } catch(e) {}
 }
@@ -726,23 +701,16 @@ function loadFromStorage() {
 }
 
 // ── Backdrop close ────────────────────────────────
-['pw-modal','edit-modal','gh-modal'].forEach(id => {
+['pw-modal','edit-modal'].forEach(id => {
   document.getElementById(id).addEventListener('click', function(e) {
     if (e.target === this) {
       if (id === 'pw-modal')   closePwModal();
       if (id === 'edit-modal') closeModal();
-      if (id === 'gh-modal')   closeGhModal();
     }
   });
 });
 
 // ── Init ──────────────────────────────────────────
-// Pre-configured GitHub credentials
-ghConfig = {
-  user:  'heidi-exa',
-  repo:  'heidi-exa.github.io',
-  token: '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'
-};
 loadFromGitHub();
 </script>
 </body>
