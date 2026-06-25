@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Office Seating Map</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f0ede8;
+    min-height: 100vh;
+    padding: 20px;
+  }
+  .page-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+  }
+  .page-header h1 {
+    font-size: 18px;
+    font-weight: 600;
+    color: #1a1a1a;
+    letter-spacing: -0.3px;
+  }
+  .admin-area {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  #admin-btn {
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid #ccc;
+    background: white;
+    cursor: pointer;
+    color: #555;
+    transition: all 0.15s;
+  }
+  #admin-btn:hover { background: #f5f5f5; border-color: #999; }
+  #admin-btn.active { background: #1a1a1a; color: white; border-color: #1a1a1a; }
+  .edit-hint {
+    font-size: 11px;
+    color: #888;
+    display: none;
+  }
+  .edit-mode .edit-hint { display: block; }
+  .save-status {
+    font-size: 11px;
+    color: #888;
+    min-width: 120px;
+    text-align: right;
+  }
+  .save-status.saving { color: #1a73e8; }
+  .save-status.saved  { color: #2e7d32; }
+  .save-status.error  { color: #c0392b; }
+  .floor-wrap {
+    background: white;
+    border-radius: 14px;
+    border: 1px solid #e0ddd8;
+    padding: 20px;
+    overflow: auto;
+    position: relative;
+  }
+  .floor {
+    position: relative;
+    width: 1140px;
+    height: 580px;
+    background: #fafaf8;
+    border: 2px solid #bbb;
+    border-radius: 4px;
+    font-size: 10px;
+  }
+  .street-label {
+    position: absolute;
+    right: -36px;
+    top: 50%;
+    transform: translateY(-50%) rotate(90deg);
+    font-size: 13px;
+    font-weight: 600;
+    color: #999;
+    letter-spacing: 1px;
+    white-space: nowrap;
+  }
+  .zone {
+    position: absolute;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 600;
+    font-size: 11px;
+    text-align: center;
+    line-height: 1.3;
+  }
+  .zone-lounge { background: #f5c97a; color: #7a5200; border: 1px solid #e0a83a; }
+  .zone-pod    { background: #f0a8a8; color: #7a1a1a; border: 1px solid #d87070; }
+  .zone-sleep  { background: #b8d9a0; color: #2a5e10; border: 1px solid #82b860; }
+  .cluster { position: absolute; }
+  .cluster-label {
+    position: absolute;
+    bottom: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a1a1a;
+    color: white;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .desk {
+    position: absolute;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.12s;
+    user-select: none;
+    overflow: hidden;
+  }
+  .desk-blue  { background: #aecde8; border: 1px solid #6fa8cc; color: #1a3a5c; }
+  .desk-pink  { background: #f2b8c6; border: 1px solid #d98099; color: #5c1a2e; }
+  .desk-occupied { background: #f2b8c6; border: 1px solid #d98099; color: #5c1a2e; }
+  .desk:hover { filter: brightness(0.92); transform: scale(1.06); z-index: 10; }
+  .edit-mode .desk:hover { outline: 2px solid #1a73e8; outline-offset: 1px; }
+  #tooltip {
+    position: fixed;
+    background: #1a1a1a;
+    color: white;
+    padding: 7px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    pointer-events: none;
+    z-index: 1000;
+    opacity: 0;
+    transition: opacity 0.1s;
+    max-width: 220px;
+    line-height: 1.5;
+  }
+  #tooltip.show { opacity: 1; }
+  #tooltip .desk-id { font-size: 10px; color: #aaa; margin-top: 1px; }
+  #edit-modal, #pw-modal, #gh-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 500;
+    align-items: center;
+    justify-content: center;
+  }
+  #edit-modal.open, #pw-modal.open, #gh-modal.open { display: flex; }
+  #gh-modal { z-index: 700; }
+  #pw-modal  { z-index: 600; }
+  .modal-box {
+    background: white;
+    border-radius: 14px;
+    padding: 24px;
+    width: 340px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+  }
+  .modal-box h3 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+  .modal-box .sub { font-size: 11px; color: #888; margin-bottom: 16px; }
+  .modal-box label { font-size: 11px; color: #555; display: block; margin-bottom: 4px; margin-top: 10px; }
+  .modal-box input {
+    width: 100%;
+    padding: 9px 12px;
+    border: 1.5px solid #ddd;
+    border-radius: 8px;
+    font-size: 13px;
+    outline: none;
+    transition: border-color 0.15s;
+    font-family: monospace;
+  }
+  .modal-box input[type=text]:not(.mono), .modal-box input[type=password] {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 14px;
+  }
+  .modal-box input:focus { border-color: #1a73e8; }
+  .modal-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    justify-content: flex-end;
+  }
+  .modal-actions button {
+    padding: 7px 16px;
+    border-radius: 7px;
+    font-size: 13px;
+    cursor: pointer;
+    border: 1px solid #ddd;
+    background: white;
+    transition: all 0.12s;
+  }
+  .modal-actions .save-btn { background: #1a1a1a; color: white; border-color: #1a1a1a; }
+  .modal-actions .clear-btn { color: #c0392b; border-color: #e0aaaa; }
+  .modal-actions button:hover { opacity: 0.85; }
+  #pw-error, #gh-error { color: #c0392b; font-size: 11px; margin-top: 6px; display: none; }
+  .room-box {
+    position: absolute;
+    border: 1.5px solid #ccc;
+    background: #f0ede8;
+    border-radius: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    color: #999;
+    font-weight: 500;
+  }
+  .legend {
+    display: flex;
+    gap: 16px;
+    margin-top: 14px;
+    font-size: 11px;
+    color: #666;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .legend-item { display: flex; align-items: center; gap: 5px; }
+  .legend-dot { width: 12px; height: 12px; border-radius: 2px; }
+  .gh-note { font-size: 10px; color: #aaa; margin-top: 8px; line-height: 1.5; }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>Office Seating Map</h1>
+  <div class="admin-area">
+    <span class="edit-hint">Click any desk to assign a name</span>
+    <span class="save-status" id="save-status"></span>
+    <button id="admin-btn" onclick="toggleAdmin()">Admin</button>
+  </div>
+</div>
+
+<div class="floor-wrap">
+  <div class="floor" id="floor">
+    <div class="street-label">shotwell st.</div>
+
+    <!-- Lounge -->
+    <div class="zone zone-lounge" style="left:14px;top:28px;width:88px;height:40px;">couch</div>
+    <div class="zone zone-lounge" style="left:14px;top:72px;width:40px;height:120px;writing-mode:vertical-lr;transform:rotate(180deg)">couch</div>
+    <div class="zone zone-sleep"  style="left:14px;top:390px;width:80px;height:120px;font-size:10px">sleep pod</div>
+
+    <!-- Pods -->
+    <div class="zone zone-pod" style="left:850px;top:18px;width:64px;height:36px;font-size:11px">pod</div>
+    <div class="zone zone-pod" style="left:922px;top:18px;width:64px;height:36px;font-size:11px">pod</div>
+    <div class="zone zone-pod" style="left:990px;top:60px;width:46px;height:88px;font-size:10px">pod</div>
+    <div class="zone zone-pod" style="left:1076px;top:130px;width:40px;height:80px;font-size:10px;writing-mode:vertical-lr;transform:rotate(180deg)">pod</div>
+
+    <!-- Open areas -->
+    <div class="room-box" style="left:240px;top:190px;width:300px;height:170px;font-size:10px;color:#bbb;">open</div>
+    <div class="room-box" style="left:680px;top:200px;width:180px;height:140px;font-size:9px;">open</div>
+
+    <!-- TOP ROW clusters 1–8 -->
+
+    <div class="cluster" id="cluster-1" style="left:160px;top:40px;">
+      <div class="desk desk-blue" id="1A" style="left:0;top:0;width:34px;height:34px;">A</div>
+      <div class="desk desk-blue" id="1B" style="left:38px;top:0;width:34px;height:34px;">B</div>
+      <div class="desk desk-blue" id="1F" style="left:0;top:38px;width:34px;height:34px;">F</div>
+      <div class="desk desk-blue" id="1C" style="left:38px;top:38px;width:34px;height:34px;">C</div>
+      <div class="desk desk-blue" id="1E" style="left:0;top:76px;width:34px;height:34px;">E</div>
+      <div class="desk desk-blue" id="1D" style="left:38px;top:76px;width:34px;height:34px;">D</div>
+      <div class="cluster-label">1</div>
+    </div>
+
+    <div class="cluster" id="cluster-2" style="left:260px;top:40px;">
+      <div class="desk desk-blue" id="2A" style="left:0;top:0;width:34px;height:34px;">A</div>
+      <div class="desk desk-blue" id="2B" style="left:38px;top:0;width:34px;height:34px;">B</div>
+      <div class="desk desk-blue" id="2F" style="left:0;top:38px;width:34px;height:34px;">F</div>
+      <div class="desk desk-blue" id="2C" style="left:38px;top:38px;width:34px;height:34px;">C</div>
+      <div class="desk desk-blue" id="2E" style="left:0;top:76px;width:34px;height:34px;">E</div>
+      <div class="desk desk-blue" id="2D" style="left:38px;top:76px;width:34px;height:34px;">D</div>
+      <div class="cluster-label">2</div>
+    </div>
+
+    <div class="cluster" id="cluster-3" style="left:360px;top:40px;">
+      <div class="desk desk-blue" id="3A" style="left:0;top:0;width:34px;height:34px;">A</div>
+      <div class="desk desk-blue" id="3B" style="left:38px;top:0;width:34px;height:34px;">B</div>
+      <div class="desk desk-blue" id="3F" style="left:0;top:38px;width:34px;height:34px;">F</div>
+      <div class="desk desk-blue" id="3C" style="left:38px;top:38px;width:34px;height:34px;">C</div>
+      <div class="desk desk-blue" id="3E" style="left:0;top:76px;width:34px;height:34px;">E</div>
+      <div class="desk desk-blue" id="3D" style="left:38px;top:76px;width:34px;height:34px;">D</div>
+      <div class="cluster-label">3</div>
+    </div>
+
+    <div class="cluster" id="cluster-4" style="left:460px;top:40px;">
+      <div class="desk desk-blue" id="4A" style="left:0;top:0;width:34px;height:34px;">A</div>
+      <div class="desk desk-blue" id="4B" style="left:38px;top:0;width:34px;height:34px;">B</div>
+      <div class="desk desk-blue" id="4F" style="left:0;top:38px;width:34px;height:34px;">F</div>
+      <div class="desk desk-blue" id="4C" style="left:38px;top:38px;width:34px;height:34px;">C</div>
+      <div class="desk desk-blue" id="4E" style="left:0;top:76px;width:34px;height:34px;">E</div>
+      <div class="desk desk-blue" id="4D" style="left:38px;top:76px;width:34px;height:34px;">D</div>
+      <div class="cluster-label">4</div>
+    </div>
+
+    <div class="cluster" id="cluster-5" style="left:560px;top:40px;">
+      <div class="desk desk-blue" id="5A" style="left:0;top:0;width:34px;height:34px;">A</div>
+      <div class="desk desk-blue" id="5B" style="left:38px;top:0;width:34px;height:34px;">B</div>
+      <div class="desk desk-blue" id="5F" style="left:0;top:38px;width:34px;height:34px;">F</div>
+      <div class="desk desk-blue" id="5C" style="left:38px;top:38px;width:34px;height:34px;">C</div>
+      <div class="desk desk-pink" id="5E" style="left:0;top:76px;width:34px;height:34px;">E</div>
+      <div class="desk desk-pink" id="5D" style="left:38px;top:76px;width:34px;height:34px;">D</div>
+      <div class="cluster-label">5</div>
+    </div>
+
+    <div class="cluster" id="cluster-6" style="left:660px;top:40px;">
+      <div class="desk desk-blue" id="6A" style="left:0;top:0;width:34px;height:34px;">A</div>
+      <div class="desk desk-blue" id="6B" style="left:38px;top:0;width:34px;height:34px;">B</div>
+      <div class="desk desk-blue" id="6F" style="left:0;top:38px;width:34px;height:34px;">F</div>
+      <div class="desk desk-blue" id="6C" style="left:38px;top:38px;width:34px;height:34px;">C</div>
+      <div class="desk desk-blue" id="6E" style="left:0;top:76px;width:34px;height:34px;">E</div>
+      <div class="desk desk-blue" id="6D" style="left:38px;top:76px;width:34px;height:34px;">D</div>
+      <div class="cluster-label">6</div>
+    </div>
+
+    <div class="cluster" id="cluster-7" style="left:760px;top:40px;">
+      <div class="desk desk-blue" id="7A" style="left:0;top:0;width:34px;height:34px;">A</div>
+      <div class="desk desk-blue" id="7B" style="left:38px;top:0;width:34px;height:34px;">B</div>
+      <div class="desk desk-blue" id="7F" style="left:0;top:38px;width:34px;height:34px;">F</div>
+      <div class="desk desk-blue" id="7C" style="left:38px;top:38px;width:34px;height:34px;">C</div>
+      <div class="desk desk-blue" id="7E" style="left:0;top:76px;width:34px;height:34px;">E</div>
+      <div class="desk desk-blue" id="7D" style="left:38px;top:76px;width:34px;height:34px;">D</div>
+      <div class="cluster-label">7</div>
+    </div>
+
+    <div class="cluster" id="cluster-8" style="left:854px;top:100px;">
+      <div class="desk desk-blue" id="8A" style="left:0;top:0;width:34px;height:34px;">A</div>
+      <div class="desk desk-blue" id="8B" style="left:38px;top:0;width:34px;height:34px;">B</div>
+      <div class="cluster-label">8</div>
+    </div>
+
+    <!-- Shotwell column cluster 9 -->
+    <div class="cluster" id="cluster-9" style="left:1016px;top:230px;">
+      <div class="desk desk-blue" id="9A" style="left:19px;top:0;width:34px;height:34px;">A</div>
+      <div class="desk desk-blue" id="9I" style="left:0;top:44px;width:34px;height:34px;">I</div>
+      <div class="desk desk-blue" id="9J" style="left:38px;top:44px;width:34px;height:34px;">J</div>
+      <div class="desk desk-blue" id="9H" style="left:0;top:88px;width:34px;height:34px;">H</div>
+      <div class="desk desk-blue" id="9B" style="left:38px;top:88px;width:34px;height:34px;">B</div>
+      <div class="desk desk-blue" id="9G" style="left:0;top:132px;width:34px;height:34px;">G</div>
+      <div class="desk desk-blue" id="9C" style="left:38px;top:132px;width:34px;height:34px;">C</div>
+      <div class="desk desk-blue" id="9F" style="left:0;top:176px;width:34px;height:34px;">F</div>
+      <div class="desk desk-blue" id="9D" style="left:38px;top:176px;width:34px;height:34px;">D</div>
+      <div class="desk desk-blue" id="9E" style="left:19px;top:220px;width:34px;height:34px;">E</div>
+      <div class="cluster-label" style="bottom:-20px;">9</div>
+    </div>
+
+    <!-- BOTTOM ROW clusters 10–16 -->
+
+    <div class="cluster" id="cluster-10" style="left:630px;top:390px;">
+      <div class="desk desk-blue" id="10D" style="left:0;top:0;width:34px;height:34px;">D</div>
+      <div class="desk desk-blue" id="10E" style="left:38px;top:0;width:34px;height:34px;">E</div>
+      <div class="desk desk-blue" id="10C" style="left:0;top:38px;width:34px;height:34px;">C</div>
+      <div class="desk desk-blue" id="10F" style="left:38px;top:38px;width:34px;height:34px;">F</div>
+      <div class="desk desk-blue" id="10B" style="left:0;top:76px;width:34px;height:34px;">B</div>
+      <div class="desk desk-blue" id="10A" style="left:38px;top:76px;width:34px;height:34px;">A</div>
+      <div class="cluster-label">10</div>
+    </div>
+
+    <div class="cluster" id="cluster-11" style="left:530px;top:390px;">
+      <div class="desk desk-blue" id="11D" style="left:0;top:0;width:34px;height:34px;">D</div>
+      <div class="desk desk-blue" id="11E" style="left:38px;top:0;width:34px;height:34px;">E</div>
+      <div class="desk desk-blue" id="11C" style="left:0;top:38px;width:34px;height:34px;">C</div>
+      <div class="desk desk-blue" id="11F" style="left:38px;top:38px;width:34px;height:34px;">F</div>
+      <div class="desk desk-blue" id="11B" style="left:0;top:76px;width:34px;height:34px;">B</div>
+      <div class="desk desk-blue" id="11A" style="left:38px;top:76px;width:34px;height:34px;">A</div>
+      <div class="cluster-label">11</div>
+    </div>
+
+    <div class="cluster" id="cluster-12" style="left:430px;top:390px;">
+      <div class="desk desk-blue" id="12D" style="left:0;top:0;width:34px;height:34px;">D</div>
+      <div class="desk desk-blue" id="12E" style="left:38px;top:0;width:34px;height:34px;">E</div>
+      <div class="desk desk-blue" id="12C" style="left:0;top:38px;width:34px;height:34px;">C</div>
+      <div class="desk desk-blue" id="12F" style="left:38px;top:38px;width:34px;height:34px;">F</div>
+      <div class="desk desk-blue" id="12B" style="left:0;top:76px;width:34px;height:34px;">B</div>
+      <div class="desk desk-blue" id="12A" style="left:38px;top:76px;width:34px;height:34px;">A</div>
+      <div class="cluster-label">12</div>
+    </div>
+
+    <div class="cluster" id="cluster-13" style="left:330px;top:390px;">
+      <div class="desk desk-blue" id="13D" style="left:0;top:0;width:34px;height:34px;">D</div>
+      <div class="desk desk-blue" id="13E" style="left:38px;top:0;width:34px;height:34px;">E</div>
+      <div class="desk desk-blue" id="13C" style="left:0;top:38px;width:34px;height:34px;">C</div>
+      <div class="desk desk-blue" id="13F" style="left:38px;top:38px;width:34px;height:34px;">F</div>
+      <div class="desk desk-blue" id="13B" style="left:0;top:76px;width:34px;height:34px;">B</div>
+      <div class="desk desk-blue" id="13A" style="left:38px;top:76px;width:34px;height:34px;">A</div>
+      <div class="cluster-label">13</div>
+    </div>
+
+    <div class="cluster" id="cluster-14" style="left:230px;top:390px;">
+      <div class="desk desk-blue" id="14D" style="left:0;top:0;width:34px;height:34px;">D</div>
+      <div class="desk desk-blue" id="14E" style="left:38px;top:0;width:34px;height:34px;">E</div>
+      <div class="desk desk-blue" id="14C" style="left:0;top:38px;width:34px;height:34px;">C</div>
+      <div class="desk desk-blue" id="14F" style="left:38px;top:38px;width:34px;height:34px;">F</div>
+      <div class="desk desk-blue" id="14B" style="left:0;top:76px;width:34px;height:34px;">B</div>
+      <div class="desk desk-blue" id="14A" style="left:38px;top:76px;width:34px;height:34px;">A</div>
+      <div class="cluster-label">14</div>
+    </div>
+
+    <div class="cluster" id="cluster-15" style="left:130px;top:390px;">
+      <div class="desk desk-blue" id="15D" style="left:0;top:0;width:34px;height:34px;">D</div>
+      <div class="desk desk-blue" id="15E" style="left:38px;top:0;width:34px;height:34px;">E</div>
+      <div class="desk desk-blue" id="15C" style="left:0;top:38px;width:34px;height:34px;">C</div>
+      <div class="desk desk-blue" id="15F" style="left:38px;top:38px;width:34px;height:34px;">F</div>
+      <div class="desk desk-blue" id="15B" style="left:0;top:76px;width:34px;height:34px;">B</div>
+      <div class="desk desk-blue" id="15A" style="left:38px;top:76px;width:34px;height:34px;">A</div>
+      <div class="cluster-label">15</div>
+    </div>
+
+    <div class="cluster" id="cluster-16" style="left:830px;top:390px;">
+      <div class="desk desk-blue" id="16D" style="left:0;top:0;width:34px;height:34px;">D</div>
+      <div class="desk desk-blue" id="16E" style="left:38px;top:0;width:34px;height:34px;">E</div>
+      <div class="desk desk-blue" id="16C" style="left:0;top:38px;width:34px;height:34px;">C</div>
+      <div class="desk desk-blue" id="16F" style="left:38px;top:38px;width:34px;height:34px;">F</div>
+      <div class="desk desk-blue" id="16B" style="left:0;top:76px;width:34px;height:34px;">B</div>
+      <div class="desk desk-blue" id="16A" style="left:38px;top:76px;width:34px;height:34px;">A</div>
+      <div class="cluster-label">16</div>
+    </div>
+
+  </div><!-- /floor -->
+
+  <div class="legend">
+    <span style="color:#888;font-size:11px;">Legend:</span>
+    <div class="legend-item"><div class="legend-dot" style="background:#aecde8;border:1px solid #6fa8cc;"></div> Available</div>
+    <div class="legend-item"><div class="legend-dot" style="background:#f2b8c6;border:1px solid #d98099;"></div> Assigned</div>
+  </div>
+</div>
+
+<div id="tooltip"></div>
+
+<!-- GitHub config modal (first-time admin setup) -->
+<div id="gh-modal">
+  <div class="modal-box">
+    <h3>GitHub setup</h3>
+    <p class="sub">Connect to your repo to save seating data</p>
+    <label>GitHub username</label>
+    <input type="text" id="gh-user" placeholder="e.g. jsmith" class="mono">
+    <label>Repository name</label>
+    <input type="text" id="gh-repo" placeholder="e.g. office-map" class="mono">
+    <label>Personal Access Token</label>
+    <input type="password" id="gh-token" placeholder="ghp_xxxxxxxxxxxx" class="mono">
+    <div class="gh-note">Token needs <strong>repo</strong> scope. Generate at GitHub → Settings → Developer settings → Personal access tokens. Stored only in this browser.</div>
+    <div id="gh-error">Could not connect — check your username, repo, and token.</div>
+    <div class="modal-actions">
+      <button onclick="closeGhModal()">Cancel</button>
+      <button class="save-btn" onclick="saveGhConfig()">Connect</button>
+    </div>
+  </div>
+</div>
+
+<!-- Password modal -->
+<div id="pw-modal">
+  <div class="modal-box">
+    <h3>Admin access</h3>
+    <p class="sub">Enter your admin password to edit seating</p>
+    <input type="password" id="pw-input" placeholder="Password" onkeydown="if(event.key==='Enter')checkPw()">
+    <div id="pw-error">Incorrect password</div>
+    <div class="modal-actions">
+      <button onclick="closePwModal()">Cancel</button>
+      <button class="save-btn" onclick="checkPw()">Unlock</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit modal -->
+<div id="edit-modal">
+  <div class="modal-box">
+    <h3 id="modal-title">Desk 1A</h3>
+    <p class="sub">Assign a person to this desk</p>
+    <input type="text" id="name-input" placeholder="Full name (leave blank to clear)" maxlength="40"
+           onkeydown="if(event.key==='Enter')saveName()">
+    <div class="modal-actions">
+      <button class="clear-btn" onclick="clearDesk()">Clear</button>
+      <button onclick="closeModal()">Cancel</button>
+      <button class="save-btn" onclick="saveName()">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── Config ─────────────────────────────────────────
+const ADMIN_PASSWORD = 'admin123'; // Change this before deploying! // Change this before deploying!
+const GH_FILE_PATH   = 'seating.json';
+
+// ── State ──────────────────────────────────────────
+let isAdmin    = false;
+let activeDesk = null;
+let ghConfig   = null; // { user, repo, token }
+let fileSha    = null; // needed for GitHub PUT
+const names    = {};
+
+// ── GitHub helpers ─────────────────────────────────
+function ghApiUrl() {
+  return `https://api.github.com/repos/${ghConfig.user}/${ghConfig.repo}/contents/${GH_FILE_PATH}`;
+}
+
+function ghHeaders() {
+  return {
+    'Authorization': `token ${ghConfig.token}`,
+    'Accept': 'application/vnd.github+json',
+    'Content-Type': 'application/json'
+  };
+}
+
+async function loadFromGitHub() {
+  if (!ghConfig) return;
+  setStatus('Loading…', 'saving');
+  try {
+    const res  = await fetch(ghApiUrl(), { headers: ghHeaders() });
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    fileSha    = data.sha;
+    const json = JSON.parse(atob(data.content.replace(/\n/g, '')));
+    Object.entries(json).forEach(([id, name]) => {
+      if (name) applyName(id, name);
+    });
+    setStatus('Loaded from GitHub', 'saved');
+    setTimeout(() => setStatus(''), 2500);
+  } catch(e) {
+    setStatus('Load failed — check config', 'error');
+  }
+}
+
+async function saveToGitHub() {
+  if (!ghConfig) { saveToStorage(); return; }
+  setStatus('Saving…', 'saving');
+  try {
+    // Build full payload (all desks, even empty ones)
+    const payload = {};
+    document.querySelectorAll('.desk').forEach(d => {
+      payload[d.id] = names[d.id] || '';
+    });
+    const body = {
+      message: 'Update seating',
+      content: btoa(JSON.stringify(payload, null, 2)),
+    };
+    if (fileSha) body.sha = fileSha;
+    const res  = await fetch(ghApiUrl(), {
+      method: 'PUT',
+      headers: ghHeaders(),
+      body: JSON.stringify(body)
+    });
+    if (!res.ok) throw new Error(res.status);
+    const data = await res.json();
+    fileSha    = data.content.sha;
+    setStatus('Saved ✓', 'saved');
+    setTimeout(() => setStatus(''), 2000);
+  } catch(e) {
+    setStatus('Save failed', 'error');
+    saveToStorage(); // fallback
+  }
+}
+
+// ── Apply a name to a desk element ────────────────
+function applyName(id, name) {
+  names[id] = name;
+  const desk = document.getElementById(id);
+  if (!desk) return;
+  if (name) {
+    const initials = name.trim().split(/\s+/).map(w => w[0]).join('').slice(0,2).toUpperCase();
+    desk.textContent = initials;
+    desk.title = name;
+    desk.classList.add('desk-occupied');
+    desk.classList.remove('desk-blue', 'desk-pink');
+  } else {
+    const seat = id.replace(/\d+/g, '');
+    desk.textContent = seat;
+    desk.title = '';
+    desk.classList.remove('desk-occupied');
+    desk.classList.add('desk-blue');
+    delete names[id];
+  }
+}
+
+// ── Status bar ────────────────────────────────────
+function setStatus(msg, cls) {
+  const el = document.getElementById('save-status');
+  el.textContent = msg;
+  el.className   = 'save-status' + (cls ? ' ' + cls : '');
+}
+
+// ── Tooltip ────────────────────────────────────────
+const tooltip = document.getElementById('tooltip');
+document.querySelectorAll('.desk').forEach(desk => {
+  desk.addEventListener('mouseenter', e => showTooltip(e, desk));
+  desk.addEventListener('mousemove',  e => moveTooltip(e));
+  desk.addEventListener('mouseleave', hideTooltip);
+  desk.addEventListener('click',      () => handleDeskClick(desk));
+});
+
+function showTooltip(e, desk) {
+  const id   = desk.id;
+  const name = names[id];
+  const num  = id.match(/\d+/)?.[0] || '';
+  const seat = id.replace(/\d+/g, '');
+  tooltip.innerHTML = name
+    ? `<strong>${name}</strong><div class="desk-id">Desk ${num}${seat}</div>`
+    : `<span style="color:#aaa">Unassigned</span><div class="desk-id">Desk ${num}${seat}</div>`;
+  tooltip.classList.add('show');
+  moveTooltip(e);
+}
+function moveTooltip(e) {
+  tooltip.style.left = (e.clientX + 14) + 'px';
+  tooltip.style.top  = (e.clientY - 10) + 'px';
+}
+function hideTooltip() { tooltip.classList.remove('show'); }
+
+// ── Admin toggle ───────────────────────────────────
+function toggleAdmin() {
+  if (isAdmin) {
+    isAdmin = false;
+    document.getElementById('admin-btn').classList.remove('active');
+    document.getElementById('admin-btn').textContent = 'Admin';
+    document.body.classList.remove('edit-mode');
+    return;
+  }
+  document.getElementById('pw-modal').classList.add('open');
+  setTimeout(() => document.getElementById('pw-input').focus(), 50);
+}
+
+function closePwModal() {
+  document.getElementById('pw-modal').classList.remove('open');
+  document.getElementById('pw-input').value = '';
+  document.getElementById('pw-error').style.display = 'none';
+}
+
+function checkPw() {
+  if (document.getElementById('pw-input').value !== ADMIN_PASSWORD) {
+    document.getElementById('pw-error').style.display = 'block';
+    return;
+  }
+  isAdmin = true;
+  closePwModal();
+  document.getElementById('admin-btn').classList.add('active');
+  document.getElementById('admin-btn').textContent = 'Editing';
+  document.body.classList.add('edit-mode');
+
+  // GitHub config is pre-configured
+  loadFromGitHub();
+}
+
+// ── GitHub config modal ───────────────────────────
+function closeGhModal() {
+  document.getElementById('gh-modal').classList.remove('open');
+  document.getElementById('gh-error').style.display = 'none';
+}
+
+async function saveGhConfig() {
+  const user  = document.getElementById('gh-user').value.trim();
+  const repo  = document.getElementById('gh-repo').value.trim();
+  const token = document.getElementById('gh-token').value.trim();
+  if (!user || !repo || !token) return;
+
+  // Test the connection
+  ghConfig = { user, repo, token };
+  try {
+    const res = await fetch(ghApiUrl(), { headers: ghHeaders() });
+    if (!res.ok) throw new Error();
+    localStorage.setItem('ghConfig', JSON.stringify(ghConfig));
+    closeGhModal();
+    loadFromGitHub();
+  } catch(e) {
+    ghConfig = null;
+    document.getElementById('gh-error').style.display = 'block';
+  }
+}
+
+// ── Desk click ─────────────────────────────────────
+function handleDeskClick(desk) {
+  if (!isAdmin) return;
+  activeDesk = desk.id;
+  const num  = desk.id.match(/\d+/)?.[0] || '';
+  const seat = desk.id.replace(/\d+/g, '');
+  document.getElementById('modal-title').textContent = `Desk ${num}${seat}`;
+  document.getElementById('name-input').value = names[desk.id] || '';
+  document.getElementById('edit-modal').classList.add('open');
+  setTimeout(() => document.getElementById('name-input').focus(), 50);
+}
+
+function closeModal() {
+  document.getElementById('edit-modal').classList.remove('open');
+  activeDesk = null;
+}
+
+function saveName() {
+  if (!activeDesk) return;
+  const val = document.getElementById('name-input').value.trim();
+  applyName(activeDesk, val);
+  closeModal();
+  saveToGitHub();
+}
+
+function clearDesk() {
+  if (!activeDesk) return;
+  applyName(activeDesk, '');
+  closeModal();
+  saveToGitHub();
+}
+
+// ── Local storage fallback ─────────────────────────
+function saveToStorage() {
+  try { localStorage.setItem('officeSeating', JSON.stringify(names)); } catch(e) {}
+}
+
+function loadFromStorage() {
+  try {
+    const stored = localStorage.getItem('ghConfig');
+    if (stored) { ghConfig = JSON.parse(stored); loadFromGitHub(); return; }
+    const saved = localStorage.getItem('officeSeating');
+    if (!saved) return;
+    JSON.parse(saved) && Object.entries(JSON.parse(saved)).forEach(([id, name]) => {
+      if (name) applyName(id, name);
+    });
+  } catch(e) {}
+}
+
+// ── Backdrop close ────────────────────────────────
+['pw-modal','edit-modal','gh-modal'].forEach(id => {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) {
+      if (id === 'pw-modal')   closePwModal();
+      if (id === 'edit-modal') closeModal();
+      if (id === 'gh-modal')   closeGhModal();
+    }
+  });
+});
+
+// ── Init ──────────────────────────────────────────
+// Pre-configured GitHub credentials
+ghConfig = {
+  user:  'heidi-exa',
+  repo:  'heidi-exa.github.io',
+  token: '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'
+};
+loadFromGitHub();
+</script>
+</body>
+</html>
