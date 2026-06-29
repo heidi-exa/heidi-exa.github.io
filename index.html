@@ -231,6 +231,32 @@
   .legend-item { display: flex; align-items: center; gap: 5px; }
   .legend-dot { width: 12px; height: 12px; border-radius: 2px; }
   .gh-note { font-size: 10px; color: #aaa; margin-top: 8px; line-height: 1.5; }
+
+  .search-wrap { position: relative; margin-bottom: 16px; }
+  #search-input {
+    width: 100%; max-width: 320px;
+    padding: 8px 12px 8px 32px;
+    border: 1.5px solid #ddd; border-radius: 8px;
+    font-size: 13px; outline: none; background: white;
+    transition: border-color 0.15s;
+  }
+  #search-input:focus { border-color: #1a73e8; }
+  .search-icon { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: #aaa; pointer-events: none; font-size: 13px; }
+  #search-results {
+    display: none; position: absolute; top: calc(100% + 4px); left: 0;
+    width: 320px; background: white; border: 1px solid #e0ddd8;
+    border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+    z-index: 200; overflow: hidden;
+  }
+  #search-results.open { display: block; }
+  .result-item { padding: 9px 14px; font-size: 12px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+  .result-item:hover { background: #f5f5f5; }
+  .result-name { font-weight: 600; color: #1a1a1a; }
+  .result-desk { color: #888; font-size: 11px; }
+  .result-empty { padding: 10px 14px; font-size: 12px; color: #aaa; }
+  .desk-highlight { outline: 3px solid #1a73e8 !important; outline-offset: 2px; z-index: 20 !important; animation: pulse 1s ease-in-out 4; }
+  @keyframes pulse { 0%,100% { outline-color: #1a73e8; } 50% { outline-color: #74aaff; } }
+
 </style>
 </head>
 <body>
@@ -245,6 +271,13 @@
 </div>
 
 <div class="floor-wrap">
+  <div class="search-wrap">
+    <span class="search-icon">⌕</span>
+    <input type="text" id="search-input" placeholder="Search by name…" autocomplete="off"
+          oninput="doSearch(this.value)" onkeydown="searchKey(event)">
+    <div id="search-results"></div>
+  </div>
+
   <div class="floor" id="floor">
     <div class="street-label">shotwell st.</div>
 
@@ -730,6 +763,32 @@ function loadFromStorage() {
 
 // ── Init ──────────────────────────────────────────
 loadFromGitHub();
+
+function doSearch(q) {
+  q = q.trim().toLowerCase();
+  const box = document.getElementById('search-results');
+  if (!q) { box.classList.remove('open'); return; }
+  const hits = Object.entries(names).filter(([,n]) => n && n.toLowerCase().includes(q)).slice(0,8);
+  box.innerHTML = hits.length
+    ? hits.map(([id,name]) => { const num=id.match(/\d+/)?.[0]||'',seat=id.replace(/\d+/g,''); return `<div class="result-item" onclick="jumpTo('${id}')"><span class="result-name">${name}</span><span class="result-desk">Desk ${num}${seat}</span></div>`; }).join('')
+    : '<div class="result-empty">No one found</div>';
+  box.classList.add('open');
+}
+function searchKey(e) {
+  if (e.key==='Escape') { document.getElementById('search-input').value=''; doSearch(''); }
+  if (e.key==='Enter') { const f=document.querySelector('.result-item'); if(f) f.click(); }
+}
+function jumpTo(id) {
+  document.getElementById('search-input').value='';
+  document.getElementById('search-results').classList.remove('open');
+  const desk=document.getElementById(id);
+  if (!desk) return;
+  desk.scrollIntoView({behavior:'smooth',block:'center',inline:'center'});
+  desk.classList.add('desk-highlight');
+  setTimeout(() => desk.classList.remove('desk-highlight'), 4000);
+}
+document.addEventListener('click', e => { if (!e.target.closest('.search-wrap')) document.getElementById('search-results').classList.remove('open'); });
+
 </script>
 </body>
 </html>
